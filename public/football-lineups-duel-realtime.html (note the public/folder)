@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Football Lineups Duel — Realtime</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-neutral-950 text-neutral-100">
+  <div id="root"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useEffect, useRef, useState } = React;
+
+    const DATA = [
+      { id:'wc1998', title:'World Cup Final — France 3–0 Brazil (1998)', date:'12 Jul 1998', competition:'FIFA World Cup Final', teams:['France','Brazil'], starters:["Barthez","Thuram","Desailly","Leboeuf","Lizarazu","Deschamps","Karembeu","Petit","Djorkaeff","Zidane","Guivarc'h","Taffarel","Cafu","Aldair","Junior Baiano","Roberto Carlos","Cesar Sampaio","Dunga","Leonardo","Rivaldo","Ronaldo","Bebeto"] },
+      { id:'wc2010', title:'World Cup Final — Spain 1–0 Netherlands (2010)', date:'11 Jul 2010', competition:'FIFA World Cup Final', teams:['Netherlands','Spain'], starters:["Stekelenburg","Van der Wiel","Heitinga","Mathijsen","Van Bronckhorst","Van Bommel","De Jong","Sneijder","Robben","Kuyt","Van Persie","Casillas","Ramos","Pique","Puyol","Capdevila","Busquets","Xabi Alonso","Xavi","Pedro","Iniesta","Villa"] },
+      { id:'wc2014', title:'World Cup Final — Germany 1–0 Argentina (2014)', date:'13 Jul 2014', competition:'FIFA World Cup Final', teams:['Germany','Argentina'], starters:["Neuer","Lahm","Boateng","Hummels","Howedes","Schweinsteiger","Kroos","Kramer","Ozil","Muller","Klose","Romero","Zabaleta","Garay","Demichelis","Rojo","Biglia","Mascherano","Perez","Lavezzi","Messi","Higuain"] },
+      { id:'wc2018', title:'World Cup Final — France 4–2 Croatia (2018)', date:'15 Jul 2018', competition:'FIFA World Cup Final', teams:['France','Croatia'], starters:["Lloris","Pavard","Varane","Umtiti","Hernandez","Kante","Pogba","Matuidi","Griezmann","Mbappe","Giroud","Subasic","Vrsaljko","Lovren","Vida","Strinic","Brozovic","Modric","Rakitic","Perisic","Rebic","Mandzukic"] },
+      { id:'wc2022', title:'World Cup Final — Argentina (4) 3–3 (2) France (2022)', date:'18 Dec 2022', competition:'FIFA World Cup Final', teams:['Argentina','France'], starters:["Martinez","Molina","Romero","Otamendi","Tagliafico","De Paul","Fernandez","Mac Allister","Di Maria","Messi","Alvarez","Lloris","Kounde","Varane","Upamecano","Hernandez","Tchouameni","Rabiot","Griezmann","Dembele","Mbappe","Giroud"] },
+      { id:'euro2004', title:'EURO Final — Portugal 0–1 Greece (2004)', date:'4 Jul 2004', competition:'UEFA European Championship Final', teams:['Portugal','Greece'], starters:["Ricardo","Miguel","Ricardo Carvalho","Jorge Andrade","Nuno Valente","Costinha","Maniche","Deco","Figo","Pauleta","Cristiano Ronaldo","Nikopolidis","Seitaridis","Dellas","Kapsis","Fyssas","Katsouranis","Basinas","Zagorakis","Giannakopoulos","Charisteas","Vryzas"] },
+      { id:'euro2021', title:'EURO 2020 Final — Italy (3) 1–1 (2) England (played 2021)', date:'11 Jul 2021', competition:'UEFA European Championship Final', teams:['Italy','England'], starters:["Donnarumma","Di Lorenzo","Bonucci","Chiellini","Emerson","Jorginho","Verratti","Barella","Chiesa","Insigne","Immobile","Pickford","Walker","Stones","Maguire","Trippier","Phillips","Rice","Shaw","Mount","Sterling","Kane"] },
+      { id:'ucl2012', title:'UCL Final — Bayern 1–1 Chelsea (4–3 pens) (2012)', date:'19 May 2012', competition:'UEFA Champions League Final', teams:['Bayern','Chelsea'], starters:["Neuer","Lahm","Boateng","Tymoshchuk","Contento","Schweinsteiger","Kroos","Robben","Muller","Ribery","Gomez","Cech","Bosingwa","Cahill","David Luiz","Ashley Cole","Mikel","Lampard","Kalou","Mata","Bertrand","Drogba"] },
+      { id:'ucl2005', title:'UCL Final — Milan 3–3 Liverpool (2–3 pens) (2005)', date:'25 May 2005', competition:'UEFA Champions League Final', teams:['Milan','Liverpool'], starters:["Dida","Cafu","Nesta","Stam","Maldini","Gattuso","Pirlo","Seedorf","Kaka","Shevchenko","Crespo","Dudek","Finnan","Carragher","Hyypia","Traore","Riise","Gerrard","Alonso","Garcia","Kewell","Baros"] },
+      { id:'ucl2019lva', title:'UCL SF 2nd leg — Liverpool 4–0 Barcelona (2019)', date:'7 May 2019', competition:'UEFA Champions League Semi-Final', teams:['Liverpool','Barcelona'], starters:["Alisson","Alexander-Arnold","Matip","Van Dijk","Robertson","Fabinho","Henderson","Milner","Shaqiri","Origi","Mane","Ter Stegen","Sergi Roberto","Pique","Lenglet","Jordi Alba","Rakitic","Busquets","Vidal","Messi","Suarez","Coutinho"] },
+    ];
+
+    function App(){
+      const [socket, setSocket] = useState(null);
+      const [connected, setConnected] = useState(false);
+      const [me, setMe] = useState({ name: "" });
+      const [room, setRoom] = useState("");
+      const [state, setState] = useState(null);
+      const [matchId, setMatchId] = useState(DATA[0].id);
+      const [guess, setGuess] = useState("");
+      const inputRef = useRef(null);
+
+      useEffect(()=>{
+        const s = io();
+        setSocket(s);
+        s.on('connect', ()=> setConnected(true));
+        s.on('disconnect', ()=> setConnected(false));
+        s.on('state', (st)=>{ setState({...st}); setMatchId(st.matchId); });
+        return ()=> s.close();
+      },[]);
+
+      const inRoom = !!(state && state.code);
+      const iAmP1 = state && state.p1 && state.p1.id === (socket && socket.id);
+      const iAmP2 = state && state.p2 && state.p2.id === (socket && socket.id);
+      const myTurn = state && ((state.turn===1 && iAmP1) || (state.turn===2 && iAmP2));
+      const gameOver = state && (state.p1Strikes>=3 || state.p2Strikes>=3);
+      const winner = gameOver ? (state.p1Strikes>=3 ? 2 : 1) : null;
+
+      const doCreate = ()=>{
+        const name = me.name || 'Player';
+        socket.emit('createRoom', { name }, (res)=>{
+          if(res && res.ok){ setRoom(res.code); setState(res.state); }
+        });
+      };
+      const doJoin = ()=>{
+        const name = me.name || 'Player';
+        const code = room.trim();
+        socket.emit('joinRoom', { code, name }, (res)=>{
+          if(res && res.ok){ setRoom(code); setState(res.state); }
+          else alert(res && res.error || 'Join failed');
+        });
+      };
+      const doStart = ()=> socket.emit('startGame', { code: state.code });
+      const doSubmit = ()=>{ if(!guess) return; socket.emit('submitGuess', { code: state.code, guess }); setGuess(""); inputRef.current && inputRef.current.focus(); };
+      const doReset = ()=> socket.emit('resetGame', { code: state.code });
+      const pickMatch = (id)=> socket.emit('changeMatch', { code: state.code, matchId: id });
+
+      return (
+        <div className="w-full flex flex-col items-center py-8 px-4">
+          <div className="max-w-4xl w-full">
+            <header className="flex items-center justify-between mb-6">
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight">⚽️ Football Lineups Duel — Realtime</h1>
+              <div className="text-xs text-neutral-400">{connected? 'Connected' : 'Offline'}</div>
+            </header>
+
+            {!inRoom && (
+              <section className="mb-6 p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-3 rounded-xl border border-neutral-800">
+                    <div className="text-sm mb-1">Your name</div>
+                    <input value={me.name} onChange={(e)=>setMe({ name:e.target.value })} className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2" placeholder="e.g., Domi"/>
+                    <button onClick={doCreate} className="mt-3 w-full px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold">Create room</button>
+                    <div className="text-xs text-neutral-400 mt-2">Creates a 5-char room code and waits for Player 2.</div>
+                  </div>
+                  <div className="p-3 rounded-xl border border-neutral-800">
+                    <div className="text-sm mb-1">Join a room</div>
+                    <input value={room} onChange={(e)=>setRoom(e.target.value.toUpperCase())} className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2" placeholder="ROOM CODE"/>
+                    <input value={me.name} onChange={(e)=>setMe({ name:e.target.value })} className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 mt-2" placeholder="Your name"/>
+                    <button onClick={doJoin} className="mt-3 w-full px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 font-semibold">Join room</button>
+                    <div className="text-xs text-neutral-400 mt-2">Ask your friend for their code.</div>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {inRoom && (
+              <>
+                <section className="mb-4 p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                    <div>
+                      <div className="text-sm uppercase tracking-wide text-neutral-400">Room</div>
+                      <div className="text-lg md:text-xl font-semibold">{state.code}</div>
+                      <div className="text-neutral-400 text-sm">Players: {(state.p1? state.p1.name:'—')} vs {(state.p2? state.p2.name:'—')}</div>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <label className="text-sm text-neutral-400">Match</label>
+                      <select value={matchId} onChange={(e)=>{ setMatchId(e.target.value); pickMatch(e.target.value); }} className="bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2">
+                        {DATA.map(m=> <option key={m.id} value={m.id}>{m.title}</option>)}
+                      </select>
+                      {!state.started && state.p1 && state.p2 && (
+                        <button onClick={doStart} className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold">Start</button>
+                      )}
+                      {state.started && (
+                        <button onClick={doReset} className="px-3 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700">Reset</button>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className={`p-4 rounded-2xl border ${state.turn===1?"border-emerald-400":"border-neutral-800"} bg-neutral-900`}>
+                    <div className="text-sm text-neutral-400 mb-1">{state.p1? state.p1.name : 'Player 1'}</div>
+                    <div className="text-xl font-semibold">Strikes: {'❌'.repeat(state.p1Strikes)}{'—'.repeat(3 - state.p1Strikes)}</div>
+                    <div className="mt-2 text-neutral-300 text-sm">Correct: {state.p1Correct.join(', ') || '—'}</div>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 flex flex-col items-center justify-center">
+                    {!gameOver ? (
+                      <>
+                        <div className="text-neutral-400 text-sm">Turn</div>
+                        <div className="text-5xl font-black leading-tight">P{state.turn}</div>
+                        <div className="text-neutral-400 text-xs mt-2">{state.lastError || ''}</div>
+                      </>
+                    ) : (
+                      <div className="text-center">
+                        <div className="text-neutral-400 text-sm">Winner</div>
+                        <div className="text-4xl font-black">P{winner}</div>
+                      </div>
+                    )}
+                  </div>
+                  <div className={`p-4 rounded-2xl border ${state.turn===2?"border-emerald-400":"border-neutral-800"} bg-neutral-900`}>
+                    <div className="text-sm text-neutral-400 mb-1">{state.p2? state.p2.name : 'Player 2'}</div>
+                    <div className="text-xl font-semibold">Strikes: {'❌'.repeat(state.p2Strikes)}{'—'.repeat(3 - state.p2Strikes)}</div>
+                    <div className="mt-2 text-neutral-300 text-sm">Correct: {state.p2Correct.join(', ') || '—'}</div>
+                  </div>
+                </section>
+
+                <section className="mb-6 p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+                  {!gameOver && state.started && (
+                    <div className="flex gap-2 items-center">
+                      <input
+                        ref={inputRef}
+                        value={guess}
+                        onChange={(e)=>setGuess(e.target.value)}
+                        onKeyDown={(e)=> e.key === 'Enter' && myTurn && doSubmit()}
+                        placeholder={myTurn ? 'Your turn: type a LAST NAME' : 'Wait for your turn…'}
+                        disabled={!myTurn}
+                        className="flex-1 disabled:opacity-60 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2"
+                      />
+                      <button onClick={()=>{ if(!myTurn) return; doSubmit(); }} disabled={!myTurn} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold disabled:opacity-50">Submit</button>
+                    </div>
+                  )}
+                  {!state.started && <div className="text-sm text-neutral-300">Waiting to start… both players must be present.</div>}
+                </section>
+
+                <section className="mb-6 p-4 rounded-2xl bg-neutral-900 border border-neutral-800">
+                  <details>
+                    <summary className="cursor-pointer select-none text-neutral-200 font-semibold">Reveal starters list</summary>
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-neutral-300">
+                      <div>
+                        <div className="text-neutral-400 text-xs mb-1">{DATA.find(m=>m.id===state.matchId).teams[0]}</div>
+                        <ul className="list-disc ml-5">
+                          {DATA.find(m=>m.id===state.matchId).starters.slice(0, 11).map((s, i)=> (<li key={i}>{s}</li>))}
+                        </ul>
+                      </div>
+                      <div>
+                        <div className="text-neutral-400 text-xs mb-1">{DATA.find(m=>m.id===state.matchId).teams[1]}</div>
+                        <ul className="list-disc ml-5">
+                          {DATA.find(m=>m.id===state.matchId).starters.slice(11).map((s, i)=> (<li key={i}>{s}</li>))}
+                        </ul>
+                      </div>
+                    </div>
+                  </details>
+                </section>
+              </>
+            )}
+
+            <footer className="text-xs text-neutral-500">
+              <p>Telegram Mini App • realtime rooms. Data: starters-only for 10 iconic matches (1998–2022).</p>
+            </footer>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
